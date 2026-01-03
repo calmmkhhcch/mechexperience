@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RENEW 180 -工作經歷條篩選網</title>
+    <title>Excel資料選擇器 - 每日單一紀錄選取</title>
     <style>
         * {
             box-sizing: border-box;
@@ -129,11 +129,13 @@
             text-align: left;
             position: sticky;
             top: 0;
+            cursor: pointer;
         }
 
         .records-table td {
             padding: 10px;
             border-bottom: 1px solid #e0e0e0;
+            cursor: pointer;
         }
 
         .records-table tr:hover {
@@ -260,6 +262,77 @@
             color: #2c3e50;
         }
 
+        .tlb-dd {
+            color: #e74c3c;
+            font-weight: bold;
+        }
+
+        .calendar-container {
+            margin: 20px 0;
+            padding: 15px;
+            background-color: #fff;
+            border-radius: 8px;
+            border: 1px solid #e0e0e0;
+        }
+
+        .calendar-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .calendar-grid {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 5px;
+        }
+
+        .calendar-day {
+            padding: 10px;
+            text-align: center;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+
+        .calendar-day:hover {
+            background-color: #f0f7ff;
+        }
+
+        .calendar-day.has-data {
+            background-color: #3498db;
+            color: white;
+        }
+
+        .calendar-day.has-data.selected-date {
+            background-color: #27ae60;
+        }
+
+        .calendar-day.selected {
+            background-color: #e74c3c;
+            color: white;
+        }
+
+        .calendar-day.empty {
+            background-color: #f5f5f5;
+            cursor: default;
+        }
+
+        .calendar-day-header {
+            padding: 10px;
+            text-align: center;
+            font-weight: bold;
+            background-color: #f8f9fa;
+            border-radius: 5px;
+        }
+
+        .record-acreg {
+            font-weight: bold;
+            color: #2c3e50;
+            min-width: 100px;
+            text-align: center;
+        }
+
         @media (max-width: 768px) {
             .container {
                 padding: 15px;
@@ -282,19 +355,23 @@
             .record-desc {
                 margin: 5px 0;
             }
+            
+            .record-acreg {
+                margin: 5px 0;
+            }
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>RENEW 180 -工作經歷條篩選網</h1>
+        <h1>Excel資料選擇器 - 每日單一紀錄選取</h1>
         
         <!-- 檔案上傳區 -->
         <div class="upload-section">
             <h2>1. 上傳Excel檔案</h2>
             <p>請上傳您的Excel檔案（格式應包含HR_CD, ACTUAL_START_DT等欄位）</p>
             <input type="file" id="excelFile" class="file-input" accept=".xlsx, .xls">
-            <button id="loadFileBtn" class="btn">載入檔案</button>
+            <!-- 移除載入檔案按鈕 -->
         </div>
 
         <!-- 資料選擇區 -->
@@ -302,15 +379,26 @@
             <h2>2. 選擇每日所需資料</h2>
             <p>請為每一天選擇一條您需要的紀錄。每一天必須且只能選擇一筆。</p>
             
+            <div class="calendar-container">
+                <div class="calendar-header">
+                    <button id="prevMonthBtn" class="btn">← 上個月</button>
+                    <h3 id="currentMonthDisplay"></h3>
+                    <button id="nextMonthBtn" class="btn">下個月 →</button>
+                </div>
+                <div class="calendar-grid" id="calendarGrid">
+                    <!-- 日曆將在這裡動態生成 -->
+                </div>
+            </div>
+            
             <div class="selection-controls">
                 <div class="date-navigation">
                     <button id="prevDateBtn" class="btn">← 上一天</button>
-                    <input type="date" id="dateFilter" class="date-filter">
+                    <input type="date" id="dateFilter" class="date-filter" list="dateList">
+                    <datalist id="dateList"></datalist>
                     <button id="nextDateBtn" class="btn">下一天 →</button>
                 </div>
                 <div>
                     <span id="currentDateDisplay"></span>
-                    <button id="markAllBtn" class="btn">標記已選擇日期</button>
                 </div>
             </div>
 
@@ -325,8 +413,7 @@
             </div>
 
             <div class="export-controls">
-                <button id="showAllBtn" class="btn">顯示所有日期的選擇</button>
-                <button id="exportBtn" class="btn btn-success" disabled>匯出選擇的資料</button>
+                <button id="exportBtn" class="btn btn-success">匯出選擇的資料</button>
                 <button id="resetBtn" class="btn btn-danger">重新開始</button>
             </div>
         </div>
@@ -352,20 +439,23 @@
         let selectedData = new Map(); // 使用Map來儲存選擇的資料，key為日期，value為選擇的資料行
         let dates = [];
         let currentDateIndex = 0;
+        let currentMonth = new Date().getMonth();
+        let currentYear = new Date().getFullYear();
 
         // DOM 元素
         const excelFileInput = document.getElementById('excelFile');
-        const loadFileBtn = document.getElementById('loadFileBtn');
         const selectionSection = document.getElementById('selectionSection');
         const resultSection = document.getElementById('resultSection');
         const recordsContainer = document.getElementById('recordsContainer');
         const selectedDataContainer = document.getElementById('selectedDataContainer');
         const dateFilter = document.getElementById('dateFilter');
+        const dateList = document.getElementById('dateList');
         const prevDateBtn = document.getElementById('prevDateBtn');
         const nextDateBtn = document.getElementById('nextDateBtn');
+        const prevMonthBtn = document.getElementById('prevMonthBtn');
+        const nextMonthBtn = document.getElementById('nextMonthBtn');
         const currentDateDisplay = document.getElementById('currentDateDisplay');
-        const markAllBtn = document.getElementById('markAllBtn');
-        const showAllBtn = document.getElementById('showAllBtn');
+        const currentMonthDisplay = document.getElementById('currentMonthDisplay');
         const exportBtn = document.getElementById('exportBtn');
         const resetBtn = document.getElementById('resetBtn');
         const backToSelectionBtn = document.getElementById('backToSelectionBtn');
@@ -375,18 +465,15 @@
         const selectedCountElement = document.getElementById('selectedCount');
         const totalDatesElement = document.getElementById('totalDates');
         const completionStatus = document.getElementById('completionStatus');
+        const calendarGrid = document.getElementById('calendarGrid');
 
-        // 載入檔案
-        loadFileBtn.addEventListener('click', loadExcelFile);
-
-        // 日期導航
+        // 事件監聽
+        excelFileInput.addEventListener('change', loadExcelFile); // 自動載入檔案
         prevDateBtn.addEventListener('click', () => navigateDate(-1));
         nextDateBtn.addEventListener('click', () => navigateDate(1));
+        prevMonthBtn.addEventListener('click', () => navigateMonth(-1));
+        nextMonthBtn.addEventListener('click', () => navigateMonth(1));
         dateFilter.addEventListener('change', filterByDate);
-
-        // 按鈕事件
-        markAllBtn.addEventListener('click', markSelectedDates);
-        showAllBtn.addEventListener('click', showAllSelections);
         exportBtn.addEventListener('click', exportSelectedData);
         resetBtn.addEventListener('click', resetAll);
         backToSelectionBtn.addEventListener('click', backToSelection);
@@ -394,7 +481,7 @@
         downloadCSVBtn.addEventListener('click', downloadCSV);
         copyToClipboardBtn.addEventListener('click', copyToClipboard);
 
-        // 載入Excel檔案
+        // 自動載入Excel檔案
         function loadExcelFile() {
             const file = excelFileInput.files[0];
             if (!file) {
@@ -420,7 +507,11 @@
                     // 處理資料
                     processExcelData(jsonData);
                     
+                    // 顯示選擇區
                     selectionSection.classList.remove('hidden');
+                    
+                    // 從本地儲存載入已選擇的資料
+                    loadFromLocalStorage();
                 } catch (error) {
                     console.error('讀取檔案錯誤:', error);
                     showError('讀取檔案失敗，請確認檔案格式正確');
@@ -434,7 +525,7 @@
             reader.readAsArrayBuffer(file);
         }
 
-        // 處理Excel資料
+        // 處理Excel資料 - 將英文字段轉為大寫
         function processExcelData(jsonData) {
             if (jsonData.length < 2) {
                 showError('檔案沒有足夠的資料');
@@ -445,11 +536,21 @@
             const headers = jsonData[0];
             
             // 找出需要的欄位索引
-            const startDateIndex = headers.indexOf('ACTUAL_START_DT');
-            const actualHrIndex = headers.indexOf('ACTUAL_HR');
-            const acRegCdIndex = headers.indexOf('AC_REG_CD');
-            const taskBarcodeIndex = headers.indexOf('TASK_BARCODE');
-            const taskDescIndex = headers.indexOf('TASK_DESC');
+            const startDateIndex = headers.findIndex(h => 
+                h && h.toString().toUpperCase().includes('ACTUAL_START_DT')
+            );
+            const actualHrIndex = headers.findIndex(h => 
+                h && h.toString().toUpperCase().includes('ACTUAL_HR')
+            );
+            const acRegCdIndex = headers.findIndex(h => 
+                h && h.toString().toUpperCase().includes('AC_REG_CD')
+            );
+            const taskBarcodeIndex = headers.findIndex(h => 
+                h && h.toString().toUpperCase().includes('TASK_BARCODE')
+            );
+            const taskDescIndex = headers.findIndex(h => 
+                h && h.toString().toUpperCase().includes('TASK_DESC')
+            );
 
             // 檢查必要欄位是否存在
             if (startDateIndex === -1) {
@@ -463,7 +564,7 @@
 
             for (let i = 1; i < jsonData.length; i++) {
                 const row = jsonData[i];
-                if (!row[startDateIndex]) continue;
+                if (!row || !row[startDateIndex]) continue;
 
                 // 解析日期時間
                 const dateTimeStr = row[startDateIndex];
@@ -492,15 +593,19 @@
                 const dateOnly = dateObj.toISOString().split('T')[0];
                 const timeOnly = dateObj.toTimeString().split(' ')[0];
                 
-                // 準備資料物件
+                // 準備資料物件 - 將英文字段轉為大寫
                 const dataObj = {
                     originalIndex: i - 1, // 原始索引（排除表頭）
                     date: dateOnly,
                     time: timeOnly,
-                    actualHr: actualHrIndex !== -1 ? row[actualHrIndex] : '',
-                    acRegCd: acRegCdIndex !== -1 ? row[acRegCdIndex] : '',
-                    taskBarcode: taskBarcodeIndex !== -1 ? row[taskBarcodeIndex] : '',
-                    taskDesc: taskDescIndex !== -1 ? row[taskDescIndex] : '無描述'
+                    actualHr: actualHrIndex !== -1 ? 
+                        (row[actualHrIndex] ? row[actualHrIndex].toString().toUpperCase() : '') : '',
+                    acRegCd: acRegCdIndex !== -1 ? 
+                        (row[acRegCdIndex] ? row[acRegCdIndex].toString().toUpperCase() : '') : '',
+                    taskBarcode: taskBarcodeIndex !== -1 ? 
+                        (row[taskBarcodeIndex] ? row[taskBarcodeIndex].toString().toUpperCase() : '') : '',
+                    taskDesc: taskDescIndex !== -1 ? 
+                        (row[taskDescIndex] ? row[taskDescIndex].toString().toUpperCase() : '無描述') : '無描述'
                 };
 
                 rawData.push(dataObj);
@@ -510,6 +615,12 @@
             // 取得日期列表並排序
             dates = Array.from(dateSet).sort();
             totalDatesElement.textContent = dates.length;
+            
+            // 更新日期列表
+            updateDateList();
+            
+            // 更新日曆
+            updateCalendar();
             
             // 顯示第一個日期的資料
             if (dates.length > 0) {
@@ -521,7 +632,17 @@
             }
         }
 
-        // 顯示指定日期的紀錄
+        // 更新日期列表
+        function updateDateList() {
+            dateList.innerHTML = '';
+            dates.forEach(date => {
+                const option = document.createElement('option');
+                option.value = date;
+                dateList.appendChild(option);
+            });
+        }
+
+        // 顯示指定日期的紀錄 - 顯示機號和TLB DD紅字標記
         function displayRecordsForDate(date) {
             recordsContainer.innerHTML = '';
             currentDateDisplay.textContent = `當前日期: ${formatDateDisplay(date)}`;
@@ -554,6 +675,12 @@
                 const isSelected = selectedData.has(date) && 
                                  selectedData.get(date).originalIndex === record.originalIndex;
                 
+                // 檢查是否包含TLB DD並標記紅字
+                let taskDescHtml = record.taskDesc;
+                if (taskDescHtml.includes('TLB DD')) {
+                    taskDescHtml = taskDescHtml.replace(/TLB DD/gi, '<span class="tlb-dd">TLB DD</span>');
+                }
+                
                 const recordElement = document.createElement('div');
                 recordElement.className = `record-item ${isSelected ? 'selected' : ''}`;
                 recordElement.dataset.index = record.originalIndex;
@@ -561,7 +688,8 @@
                 
                 recordElement.innerHTML = `
                     <div class="record-time">${record.time}</div>
-                    <div class="record-desc">${record.taskDesc}</div>
+                    <div class="record-acreg">${record.acRegCd || '無機號'}</div>
+                    <div class="record-desc">${taskDescHtml}</div>
                     <div class="record-hours">${record.actualHr} 小時</div>
                 `;
                 
@@ -579,6 +707,9 @@
             const date = record.date;
             selectedData.set(date, record);
             
+            // 儲存到本地儲存
+            saveToLocalStorage();
+            
             // 更新顯示
             const statusElement = document.getElementById(`selectionStatus_${date}`);
             if (statusElement) {
@@ -589,8 +720,46 @@
             // 重新顯示當前日期的紀錄
             displayRecordsForDate(date);
             
-            // 檢查是否所有日期都已選擇
-            checkCompletion();
+            // 更新日曆
+            updateCalendar();
+        }
+
+        // 儲存到本地儲存
+        function saveToLocalStorage() {
+            const saveData = {
+                selected: Array.from(selectedData.entries()),
+                fileName: excelFileInput.files[0]?.name || ''
+            };
+            localStorage.setItem('excelSelectorData', JSON.stringify(saveData));
+        }
+
+        // 從本地儲存載入
+        function loadFromLocalStorage() {
+            const savedData = localStorage.getItem('excelSelectorData');
+            if (savedData) {
+                try {
+                    const parsedData = JSON.parse(savedData);
+                    if (parsedData.selected && parsedData.fileName === excelFileInput.files[0]?.name) {
+                        selectedData = new Map(parsedData.selected);
+                        updateSelectionProgress();
+                        updateCalendar();
+                        
+                        // 如果有已選擇的資料，更新日曆和顯示
+                        if (selectedData.size > 0) {
+                            // 找到第一個有已選擇資料的日期
+                            const firstSelectedDate = Array.from(selectedData.keys())[0];
+                            const index = dates.indexOf(firstSelectedDate);
+                            if (index !== -1) {
+                                currentDateIndex = index;
+                                displayRecordsForDate(firstSelectedDate);
+                                updateDateNavigation();
+                            }
+                        }
+                    }
+                } catch (e) {
+                    console.error('載入本地儲存失敗:', e);
+                }
+            }
         }
 
         // 日期導航
@@ -605,6 +774,19 @@
             
             displayRecordsForDate(dates[currentDateIndex]);
             updateDateNavigation();
+        }
+
+        // 月份導航
+        function navigateMonth(direction) {
+            currentMonth += direction;
+            if (currentMonth < 0) {
+                currentMonth = 11;
+                currentYear--;
+            } else if (currentMonth > 11) {
+                currentMonth = 0;
+                currentYear++;
+            }
+            updateCalendar();
         }
 
         // 過濾日期
@@ -630,40 +812,105 @@
             currentDateDisplay.textContent = `當前日期: ${formatDateDisplay(dates[currentDateIndex])} (${currentDateIndex + 1}/${dates.length})`;
         }
 
-        // 標記已選擇日期
-        function markSelectedDates() {
-            const dateGroups = document.querySelectorAll('.date-group');
-            dateGroups.forEach(group => {
-                const date = group.querySelector('.record-item')?.dataset.date;
-                if (date && selectedData.has(date)) {
-                    group.style.borderColor = '#27ae60';
-                    group.style.backgroundColor = '#f0fff4';
-                }
+        // 更新日曆
+        function updateCalendar() {
+            const firstDay = new Date(currentYear, currentMonth, 1);
+            const lastDay = new Date(currentYear, currentMonth + 1, 0);
+            const daysInMonth = lastDay.getDate();
+            const firstDayIndex = firstDay.getDay(); // 0 = 星期日
+            
+            // 更新月份顯示
+            const monthNames = ['一月', '二月', '三月', '四月', '五月', '六月', 
+                               '七月', '八月', '九月', '十月', '十一月', '十二月'];
+            currentMonthDisplay.textContent = `${currentYear}年 ${monthNames[currentMonth]}`;
+            
+            // 清空日曆
+            calendarGrid.innerHTML = '';
+            
+            // 添加星期標題
+            const weekdays = ['日', '一', '二', '三', '四', '五', '六'];
+            weekdays.forEach(day => {
+                const dayElement = document.createElement('div');
+                dayElement.className = 'calendar-day-header';
+                dayElement.textContent = day;
+                calendarGrid.appendChild(dayElement);
             });
+            
+            // 添加空的日期格（直到月份的第一天）
+            for (let i = 0; i < firstDayIndex; i++) {
+                const emptyDay = document.createElement('div');
+                emptyDay.className = 'calendar-day empty';
+                calendarGrid.appendChild(emptyDay);
+            }
+            
+            // 添加月份的每一天
+            for (let day = 1; day <= daysInMonth; day++) {
+                const dateStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                const dayElement = document.createElement('div');
+                dayElement.className = 'calendar-day';
+                dayElement.textContent = day;
+                dayElement.dataset.date = dateStr;
+                
+                // 檢查這一天是否有資料
+                if (dates.includes(dateStr)) {
+                    dayElement.classList.add('has-data');
+                    
+                    // 檢查這一天是否已選擇
+                    if (selectedData.has(dateStr)) {
+                        dayElement.classList.add('selected-date');
+                    }
+                    
+                    // 檢查是否為當前選擇的日期
+                    if (dates[currentDateIndex] === dateStr) {
+                        dayElement.classList.add('selected');
+                    }
+                    
+                    dayElement.addEventListener('click', () => {
+                        const index = dates.indexOf(dateStr);
+                        if (index !== -1) {
+                            currentDateIndex = index;
+                            displayRecordsForDate(dateStr);
+                            updateDateNavigation();
+                            updateCalendar();
+                        }
+                    });
+                } else {
+                    dayElement.classList.add('empty');
+                }
+                
+                calendarGrid.appendChild(dayElement);
+            }
+        }
+
+        // 匯出選擇的資料 - 直接進入結果畫面
+        function exportSelectedData() {
+            const allSelections = Array.from(selectedData.values());
+            
+            if (allSelections.length === 0) {
+                alert('請先選擇至少一筆資料');
+                return;
+            }
+            
+            showAllSelections();
         }
 
         // 顯示所有選擇
         function showAllSelections() {
             const allSelections = Array.from(selectedData.values());
             
-            if (allSelections.length === 0) {
-                alert('請先選擇資料');
-                return;
-            }
-            
             // 建立表格顯示所有選擇的資料
             let html = `
                 <div class="summary">
                     <h3>總共選擇了 ${allSelections.length} 天的資料</h3>
-                    <p>以下為您選擇的資料：</p>
+                    <p>點擊任一行可以重新選擇該日期的資料</p>
                 </div>
                 <table class="records-table">
                     <thead>
                         <tr>
                             <th>日期</th>
                             <th>時間</th>
+                            <th>機號</th>
                             <th>實際工時</th>
-                            <th>AC_REG_CD</th>
                             <th>任務條碼</th>
                             <th>任務描述</th>
                         </tr>
@@ -675,14 +922,20 @@
             allSelections.sort((a, b) => a.date.localeCompare(b.date));
             
             allSelections.forEach(record => {
+                // 檢查是否包含TLB DD並標記紅字
+                let taskDescHtml = record.taskDesc;
+                if (taskDescHtml.includes('TLB DD')) {
+                    taskDescHtml = taskDescHtml.replace(/TLB DD/gi, '<span class="tlb-dd">TLB DD</span>');
+                }
+                
                 html += `
-                    <tr>
+                    <tr data-date="${record.date}" data-index="${record.originalIndex}">
                         <td>${formatDateDisplay(record.date)}</td>
                         <td>${record.time}</td>
-                        <td>${record.actualHr}</td>
                         <td>${record.acRegCd}</td>
+                        <td>${record.actualHr}</td>
                         <td>${record.taskBarcode}</td>
-                        <td>${record.taskDesc}</td>
+                        <td>${taskDescHtml}</td>
                     </tr>
                 `;
             });
@@ -691,22 +944,35 @@
             
             selectedDataContainer.innerHTML = html;
             
+            // 為表格行添加點擊事件
+            const tableRows = selectedDataContainer.querySelectorAll('tbody tr');
+            tableRows.forEach(row => {
+                row.addEventListener('click', function() {
+                    const date = this.dataset.date;
+                    if (confirm(`是否要重新選擇 ${formatDateDisplay(date)} 的資料？`)) {
+                        // 找到該日期在日期列表中的索引
+                        const index = dates.indexOf(date);
+                        if (index !== -1) {
+                            // 返回選擇畫面
+                            resultSection.classList.add('hidden');
+                            selectionSection.classList.remove('hidden');
+                            
+                            // 導航到該日期
+                            currentDateIndex = index;
+                            displayRecordsForDate(date);
+                            updateDateNavigation();
+                            updateCalendar();
+                        }
+                    }
+                });
+            });
+            
             // 切換到結果區
             selectionSection.classList.add('hidden');
             resultSection.classList.remove('hidden');
         }
 
-        // 匯出選擇的資料
-        function exportSelectedData() {
-            if (selectedData.size !== dates.length) {
-                const confirmExport = confirm(`您還有 ${dates.length - selectedData.size} 天未選擇。是否確定要匯出？`);
-                if (!confirmExport) return;
-            }
-            
-            showAllSelections();
-        }
-
-        // 下載Excel
+        // 下載Excel - 使用選擇的時間段作為檔名
         function downloadExcel() {
             const allSelections = Array.from(selectedData.values());
             if (allSelections.length === 0) {
@@ -716,7 +982,7 @@
             
             // 準備工作表資料
             const wsData = [
-                ['日期', '時間', '實際工時', 'AC_REG_CD', '任務條碼', '任務描述']
+                ['日期', '時間', '機號', '實際工時', '任務條碼', '任務描述']
             ];
             
             // 按日期排序
@@ -726,8 +992,8 @@
                 wsData.push([
                     formatDateDisplay(record.date),
                     record.time,
-                    record.actualHr,
                     record.acRegCd,
+                    record.actualHr,
                     record.taskBarcode,
                     record.taskDesc
                 ]);
@@ -737,8 +1003,19 @@
             const wb = XLSX.utils.book_new();
             XLSX.utils.book_append_sheet(wb, ws, '選擇的資料');
             
+            // 生成檔名：使用最早和最晚的日期
+            const sortedDates = allSelections.map(r => r.date).sort();
+            const startDate = sortedDates[0];
+            const endDate = sortedDates[sortedDates.length - 1];
+            
+            // 轉換為年月格式：YYYYMM
+            const startDateStr = startDate.replace(/-/g, '').substring(0, 6);
+            const endDateStr = endDate.replace(/-/g, '').substring(0, 6);
+            
+            const fileName = `${startDateStr}-${endDateStr}工作經歷.xlsx`;
+            
             // 下載檔案
-            XLSX.writeFile(wb, '選擇的資料.xlsx');
+            XLSX.writeFile(wb, fileName);
         }
 
         // 下載CSV
@@ -750,20 +1027,28 @@
             }
             
             // 建立CSV內容
-            let csvContent = '日期,時間,實際工時,AC_REG_CD,任務條碼,任務描述\n';
+            let csvContent = '日期,時間,機號,實際工時,任務條碼,任務描述\n';
             
             // 按日期排序
             allSelections.sort((a, b) => a.date.localeCompare(b.date));
             
             allSelections.forEach(record => {
-                csvContent += `"${formatDateDisplay(record.date)}","${record.time}","${record.actualHr}","${record.acRegCd}","${record.taskBarcode}","${record.taskDesc}"\n`;
+                csvContent += `"${formatDateDisplay(record.date)}","${record.time}","${record.acRegCd}","${record.actualHr}","${record.taskBarcode}","${record.taskDesc}"\n`;
             });
+            
+            // 生成檔名
+            const sortedDates = allSelections.map(r => r.date).sort();
+            const startDate = sortedDates[0];
+            const endDate = sortedDates[sortedDates.length - 1];
+            const startDateStr = startDate.replace(/-/g, '').substring(0, 6);
+            const endDateStr = endDate.replace(/-/g, '').substring(0, 6);
+            const fileName = `${startDateStr}-${endDateStr}工作經歷.csv`;
             
             // 建立下載連結
             const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
             const link = document.createElement('a');
             link.href = URL.createObjectURL(blob);
-            link.download = '選擇的資料.csv';
+            link.download = fileName;
             link.click();
         }
 
@@ -776,13 +1061,13 @@
             }
             
             // 建立文字內容
-            let textContent = '日期\t時間\t實際工時\tAC_REG_CD\t任務條碼\t任務描述\n';
+            let textContent = '日期\t時間\t機號\t實際工時\t任務條碼\t任務描述\n';
             
             // 按日期排序
             allSelections.sort((a, b) => a.date.localeCompare(b.date));
             
             allSelections.forEach(record => {
-                textContent += `${formatDateDisplay(record.date)}\t${record.time}\t${record.actualHr}\t${record.acRegCd}\t${record.taskBarcode}\t${record.taskDesc}\n`;
+                textContent += `${formatDateDisplay(record.date)}\t${record.time}\t${record.acRegCd}\t${record.actualHr}\t${record.taskBarcode}\t${record.taskDesc}\n`;
             });
             
             // 複製到剪貼簿
@@ -804,15 +1089,20 @@
                 rawData = [];
                 dates = [];
                 currentDateIndex = 0;
+                currentMonth = new Date().getMonth();
+                currentYear = new Date().getFullYear();
                 
                 excelFileInput.value = '';
                 recordsContainer.innerHTML = '';
                 selectedDataContainer.innerHTML = '';
+                calendarGrid.innerHTML = '';
                 
                 selectionSection.classList.add('hidden');
                 resultSection.classList.add('hidden');
                 
-                exportBtn.disabled = true;
+                // 清除本地儲存
+                localStorage.removeItem('excelSelectorData');
+                
                 updateSelectionProgress();
             }
         }
@@ -823,23 +1113,8 @@
             
             if (selectedData.size === dates.length && dates.length > 0) {
                 completionStatus.classList.remove('hidden');
-                exportBtn.disabled = false;
             } else {
                 completionStatus.classList.add('hidden');
-                exportBtn.disabled = true;
-            }
-        }
-
-        // 檢查是否完成所有選擇
-        function checkCompletion() {
-            updateSelectionProgress();
-            
-            if (selectedData.size === dates.length && dates.length > 0) {
-                setTimeout(() => {
-                    if (confirm('所有日期都已選擇完成！是否要顯示結果？')) {
-                        exportSelectedData();
-                    }
-                }, 500);
             }
         }
 
@@ -868,7 +1143,26 @@
         }
 
         // 頁面載入時初始化
-        document.addEventListener('DOMContentLoaded', initializeDateFilter);
+        document.addEventListener('DOMContentLoaded', function() {
+            initializeDateFilter();
+            
+            // 檢查是否有儲存的資料
+            const savedData = localStorage.getItem('excelSelectorData');
+            if (savedData) {
+                try {
+                    const parsedData = JSON.parse(savedData);
+                    if (parsedData.fileName) {
+                        // 提示用戶是否載入上次的選擇
+                        if (confirm(`檢測到上次的選擇記錄 (${parsedData.fileName})，是否載入？`)) {
+                            // 這裡可以自動載入檔案，但需要用戶重新選擇檔案
+                            // 所以只是提示
+                        }
+                    }
+                } catch (e) {
+                    console.error('載入本地儲存失敗:', e);
+                }
+            }
+        });
     </script>
 </body>
-</html>
+    </html>
