@@ -30,10 +30,32 @@
 
         h1 {
             color: #2c3e50;
-            margin-bottom: 20px;
+            margin-bottom: 10px;
             text-align: center;
             border-bottom: 2px solid #3498db;
             padding-bottom: 10px;
+        }
+
+        .description {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 15px 0 25px 0;
+            border-left: 4px solid #3498db;
+        }
+
+        .description h3 {
+            color: #2c3e50;
+            margin-bottom: 10px;
+        }
+
+        .description ol {
+            padding-left: 20px;
+            margin-bottom: 10px;
+        }
+
+        .description li {
+            margin-bottom: 8px;
         }
 
         h2 {
@@ -342,6 +364,46 @@
             text-align: center;
         }
 
+        .stats-container {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 20px 0;
+            border-left: 4px solid #f39c12;
+        }
+
+        .stats-container h3 {
+            margin-bottom: 10px;
+            color: #2c3e50;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 10px;
+        }
+
+        .stat-item {
+            background-color: white;
+            padding: 15px;
+            border-radius: 5px;
+            border: 1px solid #e0e0e0;
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #3498db;
+            margin-bottom: 5px;
+        }
+
+        .stat-label {
+            font-size: 14px;
+            color: #7f8c8d;
+        }
+
         @media (max-width: 768px) {
             .container {
                 padding: 15px;
@@ -368,6 +430,10 @@
             .record-acreg {
                 margin: 5px 0;
             }
+            
+            .stats-grid {
+                grid-template-columns: 1fr;
+            }
         }
     </style>
 </head>
@@ -375,16 +441,25 @@
     <div class="container">
         <h1>180經歷選擇器</h1>
         
+        <!-- 說明區塊 -->
+        <div class="description">
+            <h3>說明 :</h3>
+            <ol>
+                <li>先進入到 <a href="https://cksweb01/MH/ERP/Laborquery.aspx" target="_blank">https://cksweb01/MH/ERP/Laborquery.aspx</a> 抓取需要的時間段經歷</li>
+                <li>再把資料點選上傳</li>
+            </ol>
+        </div>
+
         <!-- 檔案上傳區 -->
         <div class="upload-section">
-            <h2>1. 上傳Excel檔案</h2>
+            <h2>2. 上傳Excel檔案</h2>
             <p>請上傳您的Excel檔案（格式應包含HR_CD, ACTUAL_START_DT等欄位）</p>
             <input type="file" id="excelFile" class="file-input" accept=".xlsx, .xls">
         </div>
 
         <!-- 資料選擇區 -->
         <div id="selectionSection" class="selection-section hidden">
-            <h2>2. 選擇每日所需資料</h2>
+            <h2>3. 選擇每日所需資料</h2>
             <p>請為每一天選擇一條您需要的紀錄。每一天必須且只能選擇一筆。</p>
             
             <div class="calendar-container">
@@ -429,8 +504,20 @@
 
         <!-- 結果顯示區 -->
         <div id="resultSection" class="result-section hidden">
-            <h2>3. 已選擇的資料</h2>
+            <h2>4. 已選擇的資料</h2>
             <div id="selectedDataContainer"></div>
+            
+            <!-- 統計區塊 -->
+            <div id="statsContainer" class="stats-container hidden">
+                <h3>統計資料</h3>
+                <div class="stats-grid">
+                    <div class="stat-item">
+                        <div class="stat-value" id="ddCount">0</div>
+                        <div class="stat-label">包含 "DD" 字眼的紀錄</div>
+                    </div>
+                </div>
+            </div>
+            
             <div class="export-controls">
                 <button id="backToSelectionBtn" class="btn">返回選擇</button>
                 <button id="downloadExcelBtn" class="btn btn-success">下載Excel檔案</button>
@@ -453,7 +540,7 @@
         let currentMonth = new Date().getMonth();
         let currentYear = new Date().getFullYear();
 
-        // 關鍵字優先順序
+        // 關鍵字優先順序（從高到低）
         const keywordPriority = [
             'TLB DD',
             'DD',
@@ -473,6 +560,8 @@
         const resultSection = document.getElementById('resultSection');
         const recordsContainer = document.getElementById('recordsContainer');
         const selectedDataContainer = document.getElementById('selectedDataContainer');
+        const statsContainer = document.getElementById('statsContainer');
+        const ddCountElement = document.getElementById('ddCount');
         const dateFilter = document.getElementById('dateFilter');
         const dateList = document.getElementById('dateList');
         const prevDateBtn = document.getElementById('prevDateBtn');
@@ -522,14 +611,22 @@
             reader.onload = function(e) {
                 try {
                     const data = new Uint8Array(e.target.result);
-                    const workbook = XLSX.read(data, { type: 'array' });
+                    const workbook = XLSX.read(data, { 
+                        type: 'array',
+                        cellDates: true, // 啟用日期解析
+                        cellStyles: true // 保留單元格樣式
+                    });
                     
                     // 讀取第一個工作表
                     const firstSheetName = workbook.SheetNames[0];
                     const worksheet = workbook.Sheets[firstSheetName];
                     
-                    // 將工作表轉換為JSON
-                    const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+                    // 將工作表轉換為JSON，保留日期格式
+                    const jsonData = XLSX.utils.sheet_to_json(worksheet, { 
+                        header: 1,
+                        raw: false, // 獲取原始值，不是公式
+                        dateNF: 'yyyy-mm-dd' // 日期格式
+                    });
                     
                     // 處理資料
                     processExcelData(jsonData);
@@ -590,48 +687,39 @@
 
             for (let i = 1; i < jsonData.length; i++) {
                 const row = jsonData[i];
-                if (!row || !row[startDateIndex]) continue;
+                if (!row || row[startDateIndex] === undefined || row[startDateIndex] === null) continue;
 
                 // 解析日期時間
                 const dateTimeStr = row[startDateIndex];
                 let dateObj;
                 
-                if (dateTimeStr instanceof Date) {
-                    dateObj = dateTimeStr;
-                } else if (typeof dateTimeStr === 'string') {
-                    // 嘗試多種日期格式
-                    dateObj = new Date(dateTimeStr);
-                    if (isNaN(dateObj.getTime())) {
-                        // 嘗試其他格式
-                        const parts = dateTimeStr.split(/[/\s:-]/);
-                        if (parts.length >= 3) {
-                            dateObj = new Date(parts[0], parts[1] - 1, parts[2]);
-                        }
-                    }
-                }
-
+                // 嘗試解析日期
+                dateObj = parseDate(dateTimeStr);
+                
                 if (!dateObj || isNaN(dateObj.getTime())) {
                     console.warn('無法解析日期:', dateTimeStr);
                     continue;
                 }
 
                 // 格式化日期 (YYYY-MM-DD)
-                const dateOnly = dateObj.toISOString().split('T')[0];
-                const timeOnly = dateObj.toTimeString().split(' ')[0];
+                const dateOnly = formatDate(dateObj);
+                const timeOnly = formatTime(dateObj);
                 
-                // 準備資料物件 - 將英文字段轉為大寫
+                // 準備資料物件 - 保持原始資料不變
                 const dataObj = {
                     originalIndex: i - 1,
                     date: dateOnly,
                     time: timeOnly,
                     actualHr: actualHrIndex !== -1 ? 
-                        (row[actualHrIndex] ? row[actualHrIndex].toString().toUpperCase() : '') : '',
+                        (row[actualHrIndex] ? row[actualHrIndex].toString() : '') : '',
                     acRegCd: acRegCdIndex !== -1 ? 
-                        (row[acRegCdIndex] ? row[acRegCdIndex].toString().toUpperCase() : '') : '',
+                        (row[acRegCdIndex] ? row[acRegCdIndex].toString() : '') : '',
                     taskBarcode: taskBarcodeIndex !== -1 ? 
-                        (row[taskBarcodeIndex] ? row[taskBarcodeIndex].toString().toUpperCase() : '') : '',
+                        (row[taskBarcodeIndex] ? row[taskBarcodeIndex].toString() : '') : '',
                     taskDesc: taskDescIndex !== -1 ? 
-                        (row[taskDescIndex] ? row[taskDescIndex].toString().toUpperCase() : '無描述') : '無描述'
+                        (row[taskDescIndex] ? row[taskDescIndex].toString() : '無描述') : '無描述',
+                    rawTaskDesc: taskDescIndex !== -1 ? 
+                        (row[taskDescIndex] ? row[taskDescIndex].toString() : '無描述') : '無描述'
                 };
 
                 rawData.push(dataObj);
@@ -655,7 +743,7 @@
             
             // 設定初始月份為第一個日期的月份
             if (minDate) {
-                const minDateObj = new Date(minDate);
+                const minDateObj = parseDateString(minDate);
                 currentMonth = minDateObj.getMonth();
                 currentYear = minDateObj.getFullYear();
             }
@@ -666,11 +754,99 @@
             // 顯示第一個日期的資料
             if (dates.length > 0) {
                 currentDateIndex = 0;
-                displayRecordsForDate(dates[0]);
+                displayRecordsForDate(dates[currentDateIndex]);
                 updateDateNavigation();
             } else {
                 showError('檔案中沒有有效的日期資料');
             }
+        }
+
+        // 解析日期字串
+        function parseDate(dateStr) {
+            if (!dateStr) return null;
+            
+            // 如果已經是 Date 物件
+            if (dateStr instanceof Date) {
+                return dateStr;
+            }
+            
+            // 如果是數字（Excel 序列號）
+            if (typeof dateStr === 'number') {
+                // Excel 日期從 1900-01-01 開始
+                const excelEpoch = new Date(1900, 0, 1);
+                // Excel 有一個錯誤：它將 1900 年視為閏年，所以需要調整
+                const days = Math.floor(dateStr);
+                const ms = Math.round((dateStr - days) * 86400000);
+                
+                // 計算日期
+                let date = new Date(excelEpoch);
+                date.setDate(date.getDate() + days - 2); // 減去 2 天來修正 Excel 的錯誤
+                date.setTime(date.getTime() + ms);
+                
+                return date;
+            }
+            
+            // 如果是字串
+            if (typeof dateStr === 'string') {
+                // 移除可能的空格
+                const cleanStr = dateStr.trim();
+                
+                // 嘗試多種日期格式
+                let date = new Date(cleanStr);
+                
+                // 如果解析失敗，嘗試其他格式
+                if (isNaN(date.getTime())) {
+                    // 嘗試常見的 Excel 日期格式
+                    const formats = [
+                        /(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})/, // YYYY-MM-DD 或 YYYY/MM/DD
+                        /(\d{1,2})[-\/](\d{1,2})[-\/](\d{4})/, // DD-MM-YYYY 或 DD/MM/YYYY
+                        /(\d{4})(\d{2})(\d{2})/, // YYYYMMDD
+                    ];
+                    
+                    for (const format of formats) {
+                        const match = cleanStr.match(format);
+                        if (match) {
+                            if (match[1].length === 4) {
+                                // YYYY-MM-DD 或 YYYYMMDD
+                                date = new Date(parseInt(match[1]), parseInt(match[2]) - 1, parseInt(match[3]));
+                            } else {
+                                // DD-MM-YYYY
+                                date = new Date(parseInt(match[3]), parseInt(match[2]) - 1, parseInt(match[1]));
+                            }
+                            
+                            if (!isNaN(date.getTime())) {
+                                return date;
+                            }
+                        }
+                    }
+                }
+                
+                return date;
+            }
+            
+            return null;
+        }
+
+        // 解析日期字串 (YYYY-MM-DD)
+        function parseDateString(dateStr) {
+            const parts = dateStr.split('-');
+            return new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+        }
+
+        // 格式化日期為 YYYY-MM-DD
+        function formatDate(date) {
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            return `${year}-${month}-${day}`;
+        }
+
+        // 格式化時間為 HH:MM:SS
+        function formatTime(date) {
+            const hours = String(date.getHours()).padStart(2, '0');
+            const minutes = String(date.getMinutes()).padStart(2, '0');
+            const seconds = String(date.getSeconds()).padStart(2, '0');
+            return `${hours}:${minutes}:${seconds}`;
         }
 
         // 更新日期列表
@@ -683,7 +859,7 @@
             });
         }
 
-        // 顯示指定日期的紀錄
+        // 顯示指定日期的紀錄 - 修正版本，顯示原始內容
         function displayRecordsForDate(date) {
             recordsContainer.innerHTML = '';
             currentDateDisplay.textContent = `當前日期: ${formatDateDisplay(date)}`;
@@ -716,8 +892,8 @@
                 const isSelected = selectedData.has(date) && 
                                  selectedData.get(date).originalIndex === record.originalIndex;
                 
-                // 處理任務描述，標記TLB和DD為紅字
-                let taskDescHtml = highlightTLBDD(record.taskDesc);
+                // 使用原始任務描述，但標記TLB和DD為紅字
+                let taskDescHtml = highlightTLBDD(record.rawTaskDesc || record.taskDesc);
                 
                 const recordElement = document.createElement('div');
                 recordElement.className = `record-item ${isSelected ? 'selected' : ''}`;
@@ -754,18 +930,37 @@
             updateCalendar();
         }
 
-        // 標記TLB和DD為紅字
+        // 標記TLB和DD為紅字 - 修正版本，不會重複標記
         function highlightTLBDD(text) {
             if (!text) return text;
             
-            // 先處理TLB DD（包含空格或破折號）
-            text = text.replace(/(TLB\s*DD|TLB-DD)/gi, '<span class="tlb-dd">$1</span>');
+            // 創建一個副本來處理，不修改原始文字
+            let result = text;
             
-            // 然後處理單獨的TLB和DD
-            text = text.replace(/TLB/gi, '<span class="tlb-dd">TLB</span>');
-            text = text.replace(/DD/gi, '<span class="tlb-dd">DD</span>');
+            // 先處理各種形式的TLB DD組合
+            // 使用正則表達式匹配 TLB 和 DD 的各種組合
+            // 但不重複標記已經標記過的內容
             
-            return text;
+            // 先將 HTML 特殊字符轉義
+            result = result.replace(/&/g, "&amp;")
+                          .replace(/</g, "&lt;")
+                          .replace(/>/g, "&gt;")
+                          .replace(/"/g, "&quot;")
+                          .replace(/'/g, "&#039;");
+            
+            // 處理 TLB-DD 形式
+            result = result.replace(/(TLB-DD)/gi, '<span class="tlb-dd">$1</span>');
+            
+            // 處理 TLB DD 形式（一個或多個空格）
+            result = result.replace(/(TLB\s+DD)/gi, '<span class="tlb-dd">$1</span>');
+            
+            // 處理單獨的 TLB（前面沒有標記過）
+            result = result.replace(/(?<!<span class="tlb-dd">.*)TLB(?!.*<\/span>)/gi, '<span class="tlb-dd">TLB</span>');
+            
+            // 處理單獨的 DD（前面沒有標記過）
+            result = result.replace(/(?<!<span class="tlb-dd">.*)\bDD\b(?!.*<\/span>)/gi, '<span class="tlb-dd">DD</span>');
+            
+            return result;
         }
 
         // 選擇紀錄
@@ -795,7 +990,7 @@
             }
             
             // 檢查是否需要更新日曆月份
-            const currentDate = new Date(dates[currentDateIndex]);
+            const currentDate = parseDateString(dates[currentDateIndex]);
             if (currentDate.getMonth() !== currentMonth || currentDate.getFullYear() !== currentYear) {
                 currentMonth = currentDate.getMonth();
                 currentYear = currentDate.getFullYear();
@@ -829,7 +1024,7 @@
                 currentDateIndex = index;
                 
                 // 檢查是否需要更新日曆月份
-                const dateObj = new Date(selectedDate);
+                const dateObj = parseDateString(selectedDate);
                 if (dateObj.getMonth() !== currentMonth || dateObj.getFullYear() !== currentYear) {
                     currentMonth = dateObj.getMonth();
                     currentYear = dateObj.getFullYear();
@@ -856,8 +1051,8 @@
             if (!minDate || !maxDate) return;
             
             // 限制月份範圍
-            const minDateObj = new Date(minDate);
-            const maxDateObj = new Date(maxDate);
+            const minDateObj = parseDateString(minDate);
+            const maxDateObj = parseDateString(maxDate);
             const minMonth = minDateObj.getMonth();
             const minYear = minDateObj.getFullYear();
             const maxMonth = maxDateObj.getMonth();
@@ -947,7 +1142,7 @@
             nextMonthBtn.disabled = (currentYear * 12 + currentMonth) >= maxDateNum;
         }
 
-        // 自動選擇功能
+        // 自動選擇功能 - 按照邏輯選擇但不改變原始資料
         function autoSelectRecords() {
             if (dates.length === 0) {
                 alert('沒有資料可以選擇');
@@ -957,6 +1152,9 @@
             if (!confirm('自動選擇將會根據優先順序為每個日期選擇一條紀錄，確定要執行嗎？')) {
                 return;
             }
+            
+            // 記錄已選擇的天數
+            let autoSelectedCount = 0;
             
             // 為每個日期選擇一條紀錄
             dates.forEach(date => {
@@ -968,25 +1166,24 @@
                 if (dateRecords.length === 0) return;
                 
                 // 根據優先順序選擇紀錄
-                let selectedRecord = null;
-                let highestPriority = keywordPriority.length + 1; // 數字越小優先級越高
+                let bestRecord = null;
+                let bestPriority = keywordPriority.length + 1; // 數字越小優先級越高
                 
                 dateRecords.forEach(record => {
-                    // 計算這條紀錄的優先級
-                    const priority = getRecordPriority(record.taskDesc);
+                    // 取得這條紀錄的優先級
+                    const priority = getRecordPriority(record.rawTaskDesc || record.taskDesc);
                     
-                    if (priority < highestPriority) {
-                        highestPriority = priority;
-                        selectedRecord = record;
-                    } else if (priority === highestPriority && !selectedRecord) {
-                        // 如果優先級相同且還沒有選擇紀錄，選擇第一條
-                        selectedRecord = record;
+                    // 如果找到優先級更高的紀錄，更新選擇
+                    if (priority < bestPriority) {
+                        bestPriority = priority;
+                        bestRecord = record;
                     }
                 });
                 
                 // 如果找到了紀錄，選擇它
-                if (selectedRecord) {
-                    selectedData.set(date, selectedRecord);
+                if (bestRecord) {
+                    selectedData.set(date, bestRecord);
+                    autoSelectedCount++;
                 }
             });
             
@@ -996,23 +1193,26 @@
                 updateCalendar();
             }
             
-            alert(`自動選擇完成！已選擇 ${selectedData.size} 天的資料。`);
+            alert(`自動選擇完成！已選擇 ${autoSelectedCount} 天的資料。`);
         }
 
-        // 計算紀錄的優先級
+        // 計算紀錄的優先級 - 完全按照您的邏輯
         function getRecordPriority(taskDesc) {
             if (!taskDesc) return keywordPriority.length + 1;
             
             const upperDesc = taskDesc.toUpperCase();
             
+            // 按照關鍵字優先順序檢查
             for (let i = 0; i < keywordPriority.length; i++) {
                 const keyword = keywordPriority[i].toUpperCase();
+                
+                // 檢查是否包含關鍵字
                 if (upperDesc.includes(keyword)) {
                     return i; // 數字越小優先級越高
                 }
             }
             
-            return keywordPriority.length + 1; // 沒有匹配關鍵字
+            return keywordPriority.length + 1; // 沒有匹配關鍵字，最低優先級
         }
 
         // 匯出選擇的資料
@@ -1025,6 +1225,21 @@
             }
             
             showAllSelections();
+        }
+
+        // 統計包含"DD"字眼的紀錄數量
+        function countDDRecords() {
+            const allSelections = Array.from(selectedData.values());
+            let ddCount = 0;
+            
+            allSelections.forEach(record => {
+                const taskDesc = (record.rawTaskDesc || record.taskDesc || '').toUpperCase();
+                if (taskDesc.includes('DD')) {
+                    ddCount++;
+                }
+            });
+            
+            return ddCount;
         }
 
         // 顯示所有選擇
@@ -1055,8 +1270,13 @@
             allSelections.sort((a, b) => a.date.localeCompare(b.date));
             
             allSelections.forEach(record => {
-                // 處理任務描述，標記TLB和DD為紅字
-                let taskDescHtml = highlightTLBDD(record.taskDesc);
+                // 使用原始任務描述，不進行高亮處理
+                let taskDescHtml = (record.rawTaskDesc || record.taskDesc || '')
+                    .replace(/&/g, "&amp;")
+                    .replace(/</g, "&lt;")
+                    .replace(/>/g, "&gt;")
+                    .replace(/"/g, "&quot;")
+                    .replace(/'/g, "&#039;");
                 
                 html += `
                     <tr data-date="${record.date}" data-index="${record.originalIndex}">
@@ -1073,6 +1293,11 @@
             html += '</tbody></table>';
             
             selectedDataContainer.innerHTML = html;
+            
+            // 統計包含"DD"字眼的紀錄數量
+            const ddCount = countDDRecords();
+            ddCountElement.textContent = ddCount;
+            statsContainer.classList.remove('hidden');
             
             // 為表格行添加點擊事件
             const tableRows = selectedDataContainer.querySelectorAll('tbody tr');
@@ -1119,13 +1344,16 @@
             allSelections.sort((a, b) => a.date.localeCompare(b.date));
             
             allSelections.forEach(record => {
+                // 使用原始任務描述
+                const taskDesc = record.rawTaskDesc || record.taskDesc || '';
+                
                 wsData.push([
                     formatDateDisplay(record.date),
                     record.time,
                     record.acRegCd,
                     record.actualHr,
                     record.taskBarcode,
-                    record.taskDesc
+                    taskDesc
                 ]);
             });
             
@@ -1163,7 +1391,10 @@
             allSelections.sort((a, b) => a.date.localeCompare(b.date));
             
             allSelections.forEach(record => {
-                csvContent += `"${formatDateDisplay(record.date)}","${record.time}","${record.acRegCd}","${record.actualHr}","${record.taskBarcode}","${record.taskDesc}"\n`;
+                // 使用原始任務描述
+                const taskDesc = record.rawTaskDesc || record.taskDesc || '';
+                
+                csvContent += `"${formatDateDisplay(record.date)}","${record.time}","${record.acRegCd}","${record.actualHr}","${record.taskBarcode}","${taskDesc}"\n`;
             });
             
             // 生成檔名
@@ -1197,7 +1428,10 @@
             allSelections.sort((a, b) => a.date.localeCompare(b.date));
             
             allSelections.forEach(record => {
-                textContent += `${formatDateDisplay(record.date)}\t${record.time}\t${record.acRegCd}\t${record.actualHr}\t${record.taskBarcode}\t${record.taskDesc}\n`;
+                // 使用原始任務描述
+                const taskDesc = record.rawTaskDesc || record.taskDesc || '';
+                
+                textContent += `${formatDateDisplay(record.date)}\t${record.time}\t${record.acRegCd}\t${record.actualHr}\t${record.taskBarcode}\t${taskDesc}\n`;
             });
             
             // 複製到剪貼簿
@@ -1254,7 +1488,7 @@
 
         // 格式化日期顯示
         function formatDateDisplay(dateStr) {
-            const date = new Date(dateStr);
+            const date = parseDateString(dateStr);
             return `${date.getFullYear()}/${String(date.getMonth() + 1).padStart(2, '0')}/${String(date.getDate()).padStart(2, '0')}`;
         }
 
